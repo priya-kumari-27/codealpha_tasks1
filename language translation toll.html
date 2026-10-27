@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anuvad – Language Translation Tool</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef3f9;--card:#fff;--ink:#12213b;--mute:#5d6b82;--line:#d5deeb;--accent:#0e8a7d;--accent-ink:#fff;--out:#f4f8fd;--err:#b3261e}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1626;--card:#15233a;--ink:#eaf0fa;--mute:#9aa9c2;--line:#27395a;--accent:#2ec4b0;--accent-ink:#06231f;--out:#101d33;--err:#ff8a80}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Inter,system-ui,sans-serif;padding:24px 16px 48px}
+main{max-width:920px;margin:0 auto}
+h1{font:800 clamp(2rem,6vw,3.2rem)/1.05 "Bricolage Grotesque",sans-serif;margin:8px 0 6px;letter-spacing:-.02em}
+.sub{color:var(--mute);margin:0 0 24px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+select,input[type=password]{font:inherit;color:var(--ink);background:var(--out);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0}
+.bar select{flex:1 1 140px}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--out);color:var(--ink);border-radius:10px;padding:9px 13px}
+button:hover{border-color:var(--accent)}
+button:focus-visible,select:focus-visible,textarea:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600;padding:12px 26px}
+.panes{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:700px){.panes{grid-template-columns:1fr}}
+.pane{display:flex;flex-direction:column;gap:8px}
+textarea,.out{width:100%;min-height:200px;border:1px solid var(--line);border-radius:12px;padding:14px;font:inherit;color:var(--ink);background:var(--out);resize:vertical}
+.out{white-space:pre-wrap;overflow-wrap:anywhere}
+.out.empty{color:var(--mute)}
+.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:.9rem;color:var(--mute)}
+.tools .sp{flex:1}
+.go{display:flex;justify-content:center;margin:16px 0 4px;gap:10px;flex-wrap:wrap;align-items:center}
+.status{min-height:1.4em;text-align:center;color:var(--mute);font-size:.9rem}
+.status.err{color:var(--err)}
+details{margin-top:18px}
+summary{cursor:pointer;color:var(--mute)}
+.set{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.set input{flex:1 1 240px}
+h2{font:600 1.1rem "Bricolage Grotesque",sans-serif;margin:28px 0 10px}
+.hist{display:grid;gap:8px}
+.hist button{text-align:left;display:block;width:100%}
+.hist small{color:var(--mute)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Anuvad</h1>
+  <p class="sub">Type or speak, pick two languages, get the translation.</p>
+
+  <div class="card">
+    <div class="bar">
+      <select id="src" aria-label="Source language"></select>
+      <button id="swap" title="Swap languages" aria-label="Swap languages">⇄</button>
+      <select id="tgt" aria-label="Target language"></select>
+    </div>
+
+    <div class="panes">
+      <div class="pane">
+        <textarea id="inp" maxlength="5000" placeholder="Write or paste text here…"></textarea>
+        <div class="tools">
+          <button id="mic">🎤 Speak</button>
+          <button id="speakIn">🔊 Listen</button>
+          <span class="sp"></span>
+          <span id="count">0 / 5000</span>
+          <button id="clear">Clear</button>
+        </div>
+      </div>
+      <div class="pane">
+        <div id="out" class="out empty" aria-live="polite">Translation will appear here.</div>
+        <div class="tools">
+          <button id="copy">📋 Copy</button>
+          <button id="speakOut">🔊 Listen</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="go"><button id="go" class="primary">Translate</button></div>
+    <div id="status" class="status" role="status"></div>
+
+    <details>
+      <summary>Translation engine settings</summary>
+      <div class="set">
+        <select id="engine" aria-label="Translation engine">
+          <option value="free">Free auto (recommended)</option>
+          <option value="mymemory">MyMemory only (free)</option>
+          <option value="google">Google Cloud Translation (API key)</option>
+        </select>
+        <input id="key" type="password" placeholder="Google API key (only for Google engine)" autocomplete="off">
+      </div>
+    </details>
+  </div>
+
+  <h2>Recent translations</h2>
+  <div id="hist" class="hist"></div>
+</main>
+
+<script>
+const LANGS = {
+  en:["English","en-US"], hi:["Hindi","hi-IN"], bn:["Bengali","bn-IN"], ta:["Tamil","ta-IN"],
+  te:["Telugu","te-IN"], mr:["Marathi","mr-IN"], gu:["Gujarati","gu-IN"], kn:["Kannada","kn-IN"],
+  ml:["Malayalam","ml-IN"], pa:["Punjabi","pa-IN"], ur:["Urdu","ur-PK"], ne:["Nepali","ne-NP"],
+  es:["Spanish","es-ES"], fr:["French","fr-FR"], de:["German","de-DE"], it:["Italian","it-IT"],
+  pt:["Portuguese","pt-PT"], ru:["Russian","ru-RU"], ar:["Arabic","ar-SA"], zh:["Chinese","zh-CN"],
+  ja:["Japanese","ja-JP"], ko:["Korean","ko-KR"], tr:["Turkish","tr-TR"], id:["Indonesian","id-ID"]
+};
+const $ = id => document.getElementById(id);
+const src=$("src"), tgt=$("tgt"), inp=$("inp"), out=$("out"), status=$("status");
+let history_ = [], lastText = "";
+
+// ---------- setup ----------
+src.innerHTML = '<option value="auto">Detect language</option>' +
+  Object.entries(LANGS).map(([c,[n]])=>`<option value="${c}">${n}</option>`).join("");
+tgt.innerHTML = Object.entries(LANGS).map(([c,[n]])=>`<option value="${c}">${n}</option>`).join("");
+src.value="en"; tgt.value="hi";
+
+try{
+  $("key").value = localStorage.getItem("gkey")||"";
+  $("engine").value = localStorage.getItem("engine")||"free";
+  if(!$("engine").value) $("engine").value = "free";
+  history_ = JSON.parse(localStorage.getItem("hist")||"[]");
+}catch(e){}
+renderHist();
+
+function setStatus(msg, err){ status.textContent = msg; status.className = "status"+(err?" err":""); }
+function setOut(text){ lastText = text; out.textContent = text; out.classList.remove("empty"); }
+
+// ---------- translation ----------
+function chunk(text, max=450){
+  const parts = text.match(/[^.!?।\n]+[.!?।\n]*/g) || [text];
+  const chunks = []; let cur = "";
+  for(const p of parts){
+    if((cur+p).length > max && cur){ chunks.push(cur); cur = ""; }
+    if(p.length > max){ for(let i=0;i<p.length;i+=max) chunks.push(p.slice(i,i+max)); }
+    else cur += p;
+  }
+  if(cur) chunks.push(cur);
+  return chunks;
+}
+
+const MM = c => ({zh:"zh-CN", pa:"pa-IN"}[c] || c);
+
+async function viaGtx(text, from, to){
+  const result = [];
+  for(const c of chunk(text, 1200)){
+    const url = "https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=" + from +
+                "&tl=" + (to==="zh"?"zh-CN":to) + "&q=" + encodeURIComponent(c);
+    const r = await fetch(url);
+    if(!r.ok) throw new Error("Free service error "+r.status);
+    const d = await r.json();
+    result.push(d[0].map(x=>x[0]).join(""));
+  }
+  return result.join(" ");
+}
+
+async function viaFree(text, from, to){
+  try{ return await viaGtx(text, from, to); }
+  catch(e1){
+    try{ return await viaMyMemory(text, from, to); }
+    catch(e2){ throw new Error(e2.message || e1.message); }
+  }
+}
+
+async function viaMyMemory(text, from, to){
+  const result = [];
+  for(const c of chunk(text)){
+    const url = "https://api.mymemory.translated.net/get?q=" + encodeURIComponent(c) +
+                "&langpair=" + encodeURIComponent((from==="auto"?"Autodetect":MM(from))+"|"+MM(to));
+    const r = await fetch(url);
+    if(!r.ok) throw new Error("Server error "+r.status);
+    const d = await r.json();
+    if(d.responseStatus != 200) throw new Error(d.responseDetails || "Translation failed");
+    const t = d.responseData.translatedText;
+    if(/MYMEMORY WARNING|INVALID/i.test(t)) throw new Error("MyMemory daily limit reached. Try again later or use a Google API key.");
+    result.push(t);
+  }
+  return result.join(" ");
+}
+
+async function viaGoogle(text, from, to){
+  const key = $("key").value.trim();
+  if(!key) throw new Error("Add your Google API key in engine settings.");
+  const body = {q:text, target:to, format:"text"};
+  if(from!=="auto") body.source = from;
+  const r = await fetch("https://translation.googleapis.com/language/translate/v2?key="+encodeURIComponent(key),{
+    method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)
+  });
+  const d = await r.json();
+  if(!r.ok) throw new Error(d.error?.message || "Google API error");
+  const el = document.createElement("textarea");
+  el.innerHTML = d.data.translations[0].translatedText;   // decode HTML entities
+  return el.value;
+}
+
+async function translate(){
+  const text = inp.value.trim();
+  if(!text){ setStatus("Enter some text to translate.", true); return; }
+  if(src.value===tgt.value){ setStatus("Choose two different languages.", true); return; }
+  $("go").disabled = true; setStatus("Translating…");
+  try{
+    const eng = $("engine").value;
+    const fn = eng==="google" ? viaGoogle : eng==="mymemory" ? viaMyMemory : viaFree;
+    const res = await fn(text, src.value, tgt.value);
+    setOut(res); setStatus("Done.");
+    history_.unshift({text, res, from:src.value, to:tgt.value});
+    history_ = history_.slice(0,8);
+    try{ localStorage.setItem("hist", JSON.stringify(history_)); }catch(e){}
+    renderHist();
+  }catch(e){
+    const m = e.message || String(e);
+    setStatus(/fetch|network|load failed/i.test(m)
+      ? "Can't reach the translation service. Open this file in Chrome/Edge/Safari from your device (not inside a chat preview) and check your internet."
+      : m, true);
+  }finally{ $("go").disabled = false; }
+}
+
+// ---------- usability ----------
+$("go").onclick = translate;
+inp.addEventListener("keydown", e=>{ if((e.ctrlKey||e.metaKey) && e.key==="Enter") translate(); });
+inp.addEventListener("input", ()=> $("count").textContent = inp.value.length+" / 5000");
+$("clear").onclick = ()=>{ inp.value=""; $("count").textContent="0 / 5000"; lastText=""; out.textContent="Translation will appear here."; out.classList.add("empty"); setStatus(""); inp.focus(); };
+
+$("swap").onclick = ()=>{
+  if(src.value==="auto") return setStatus("Pick a source language to swap.", true);
+  [src.value, tgt.value] = [tgt.value, src.value];
+  if(lastText){ inp.value = lastText; inp.dispatchEvent(new Event("input")); }
+  out.textContent="Translation will appear here."; out.classList.add("empty"); lastText="";
+};
+
+$("copy").onclick = async ()=>{
+  if(!lastText) return setStatus("Nothing to copy yet.", true);
+  try{ await navigator.clipboard.writeText(lastText); }
+  catch(e){ const t=document.createElement("textarea"); t.value=lastText; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove(); }
+  const b=$("copy"); b.textContent="✅ Copied"; setTimeout(()=>b.textContent="📋 Copy",1500);
+};
+
+// text-to-speech
+function speak(text, lang){
+  if(!("speechSynthesis" in window)) return setStatus("Text-to-speech isn't supported in this browser.", true);
+  if(!text) return setStatus("Nothing to read yet.", true);
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text); u.lang = LANGS[lang]?.[1] || "en-US";
+  speechSynthesis.speak(u);
+}
+$("speakIn").onclick  = ()=> speak(inp.value.trim(), src.value==="auto" ? "en" : src.value);
+$("speakOut").onclick = ()=> speak(lastText, tgt.value);
+
+// speech-to-text
+$("mic").onclick = ()=>{
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR) return setStatus("Voice input works in Chrome/Edge/Safari.", true);
+  const r = new SR(); r.lang = LANGS[src.value==="auto"?"en":src.value][1];
+  r.onstart = ()=> setStatus("Listening…");
+  r.onresult = e=>{ inp.value = (inp.value+" "+e.results[0][0].transcript).trim(); inp.dispatchEvent(new Event("input")); setStatus(""); };
+  r.onerror = ()=> setStatus("Couldn't hear anything. Check microphone permission.", true);
+  r.start();
+};
+
+// settings + history
+$("engine").onchange = $("key").onchange = ()=>{ try{ localStorage.setItem("engine",$("engine").value); localStorage.setItem("gkey",$("key").value);}catch(e){} };
+
+function renderHist(){
+  const h = $("hist");
+  if(!history_.length){ h.innerHTML = '<span class="sub">Your translations will be listed here.</span>'; return; }
+  h.innerHTML = "";
+  history_.forEach(i=>{
+    const b = document.createElement("button");
+    const nm = c => c==="auto" ? "Detected" : LANGS[c][0];
+    b.innerHTML = `<small></small><br><span></span>`;
+    b.querySelector("small").textContent = nm(i.from)+" → "+LANGS[i.to][0];
+    b.querySelector("span").textContent = i.text.slice(0,60) + (i.text.length>60?"…":"") + "  =  " + i.res.slice(0,60) + (i.res.length>60?"…":"");
+    b.onclick = ()=>{ src.value=i.from; tgt.value=i.to; inp.value=i.text; inp.dispatchEvent(new Event("input")); setOut(i.res); };
+    h.appendChild(b);
+  });
+}
+</script>
+</body>
+</html>
